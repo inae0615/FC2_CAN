@@ -1,0 +1,638 @@
+/* USER CODE BEGIN Header */
+/**
+  ******************************************************************************
+  * @file           : main.c
+  * @brief          : Main program body
+  ******************************************************************************
+  * @attention
+  *
+  * Copyright (c) 2023 STMicroelectronics.
+  * All rights reserved.
+  *
+  * This software is licensed under terms that can be found in the LICENSE file
+  * in the root directory of this software component.
+  * If no LICENSE file comes with this software, it is provided AS-IS.
+  *
+  ******************************************************************************
+  */
+/* USER CODE END Header */
+/* Includes ------------------------------------------------------------------*/
+#include "main.h"
+#include <stdio.h>
+
+/* Private includes ----------------------------------------------------------*/
+/* USER CODE BEGIN Includes */
+
+/* USER CODE END Includes */
+
+/* Private typedef -----------------------------------------------------------*/
+/* USER CODE BEGIN PTD */
+
+/* USER CODE END PTD */
+
+/* Private define ------------------------------------------------------------*/
+/* USER CODE BEGIN PD */
+/* USER CODE END PD */
+
+/* Private macro -------------------------------------------------------------*/
+/* USER CODE BEGIN PM */
+
+/* USER CODE END PM */
+
+/* Private variables ---------------------------------------------------------*/
+CAN_HandleTypeDef hcan;
+
+UART_HandleTypeDef huart2;
+
+/* USER CODE BEGIN PV */
+
+/* USER CODE END PV */
+
+/* Private function prototypes -----------------------------------------------*/
+void SystemClock_Config(void);
+static void MX_GPIO_Init(void);
+static void MX_USART2_UART_Init(void);
+static void MX_CAN_Init(void);
+/* USER CODE BEGIN PFP */
+
+//uart 에서 print문 사용하자
+int _write(int file, char *ptr, int len)
+{
+   HAL_UART_Transmit(&huart2, (uint8_t *)ptr, (uint16_t)len, 100);
+   HAL_Delay(1000);
+   return (len);
+}
+
+/* USER CODE END PFP */
+
+/* Private user code ---------------------------------------------------------*/
+/* USER CODE BEGIN 0 */
+
+CAN_TxHeaderTypeDef TxHeader1;
+uint8_t TxData1[] = "1message";
+uint32_t TxMailbox1;
+
+CAN_TxHeaderTypeDef TxHeader2;
+uint8_t TxData2[] = "2message";
+uint32_t TxMailbox2;
+
+CAN_TxHeaderTypeDef TxHeader3;
+uint8_t TxData3[] = "3message";
+uint32_t TxMailbox3;
+
+uint32_t tickstart; //타임아웃을 위한 변수 선언
+uint32_t key_value =0; //키보드 입력
+
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+   if(huart ->Instance == USART2)
+   {
+
+      /* Receive on byte in interrupt mode */
+      HAL_UART_Receive_IT(&huart2, &key_value, 1);
+   }
+}
+
+
+
+/* USER CODE END 0 */
+
+/**
+  * @brief  The application entry point.
+  * @retval int
+  */
+int main(void)
+{
+  /* USER CODE BEGIN 1 */
+
+  /* USER CODE END 1 */
+
+  /* MCU Configuration--------------------------------------------------------*/
+
+  /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
+  HAL_Init();
+
+  /* USER CODE BEGIN Init */
+
+  /* USER CODE END Init */
+
+  /* Configure the system clock */
+  SystemClock_Config();
+
+  /* USER CODE BEGIN SysInit */
+
+  /* USER CODE END SysInit */
+
+  /* Initialize all configured peripherals */
+  MX_GPIO_Init();
+  MX_USART2_UART_Init();
+  /* USER CODE BEGIN 2 */
+ //==============================================================
+ //MX_CAN_Init();
+
+  hcan.Instance = CAN1;
+  hcan.Init.Prescaler = 4;
+  hcan.Init.Mode = CAN_MODE_NORMAL;
+  hcan.Init.SyncJumpWidth = CAN_SJW_1TQ;
+  hcan.Init.TimeSeg1 = CAN_BS1_13TQ;
+  hcan.Init.TimeSeg2 = CAN_BS2_2TQ;
+  hcan.Init.TimeTriggeredMode = DISABLE;
+  hcan.Init.AutoBusOff = DISABLE;
+  hcan.Init.AutoWakeUp = DISABLE;
+  hcan.Init.AutoRetransmission = DISABLE;
+  hcan.Init.ReceiveFifoLocked = DISABLE;
+  hcan.Init.TransmitFifoPriority = DISABLE;
+ //================================================================
+
+  TxHeader1.StdId = 0x321; //
+  TxHeader1.RTR = CAN_RTR_DATA;
+  TxHeader1.IDE = CAN_ID_STD;
+  TxHeader1.DLC = 8;
+  TxHeader1.TransmitGlobalTime = DISABLE;
+
+  TxHeader2.StdId = 0x322; //
+  TxHeader2.RTR = CAN_RTR_DATA;
+  TxHeader2.IDE = CAN_ID_STD;
+  TxHeader2.DLC = 8;
+  TxHeader2.TransmitGlobalTime = DISABLE;
+
+  TxHeader3.StdId = 0x333; //
+  TxHeader3.RTR = CAN_RTR_DATA;
+  TxHeader3.IDE = CAN_ID_STD;
+  TxHeader3.DLC = 8;
+  TxHeader3.TransmitGlobalTime = DISABLE;
+
+  HAL_UART_Receive_IT(&huart2, &key_value, 1); //uart callback함수 호출
+
+ //================================================================
+ //if (HAL_CAN_Init(&hcan) != HAL_OK)
+  uint32_t tickstart;
+
+  if (hcan.State == HAL_CAN_STATE_RESET)
+  {
+    /* Init the low level hardware: CLOCK, NVIC */
+    HAL_CAN_MspInit(&hcan);
+  }
+
+  SET_BIT(hcan.Instance->MCR, CAN_MCR_INRQ);
+
+  /* Get tick */
+  tickstart = HAL_GetTick();
+
+  while ((hcan.Instance->MSR & CAN_MSR_INAK) == 0U)
+  {
+    if ((HAL_GetTick() - tickstart) > 10U)
+    {
+      /* Update error code */
+      hcan.ErrorCode |= HAL_CAN_ERROR_TIMEOUT;
+
+      /* Change CAN state */
+      hcan.State = HAL_CAN_STATE_ERROR;
+
+      return HAL_ERROR;
+    }
+  }
+
+  CLEAR_BIT(hcan.Instance->MCR, CAN_MCR_SLEEP);
+
+  tickstart = HAL_GetTick();
+
+  /* Check Sleep mode leave acknowledge */
+  while ((hcan.Instance->MSR & CAN_MSR_SLAK) != 0U)
+  {
+    if ((HAL_GetTick() - tickstart) > 10U)
+    {
+      /* Update error code */
+      hcan.ErrorCode |= HAL_CAN_ERROR_TIMEOUT;
+
+      /* Change CAN state */
+      hcan.State = HAL_CAN_STATE_ERROR;
+
+      return HAL_ERROR;
+    }
+  }
+
+  /* Set the time triggered communication mode */
+  if (hcan.Init.TimeTriggeredMode == ENABLE)
+  {
+    SET_BIT(hcan.Instance->MCR, CAN_MCR_TTCM);
+  }
+  else
+  {
+    CLEAR_BIT(hcan.Instance->MCR, CAN_MCR_TTCM);
+  }
+
+  /* Set the automatic bus-off management */
+  if (hcan.Init.AutoBusOff == ENABLE)
+  {
+    SET_BIT(hcan.Instance->MCR, CAN_MCR_ABOM);
+  }
+  else
+  {
+    CLEAR_BIT(hcan.Instance->MCR, CAN_MCR_ABOM);
+  }
+
+  /* Set the automatic wake-up mode */
+  if (hcan.Init.AutoWakeUp == ENABLE)
+  {
+    SET_BIT(hcan.Instance->MCR, CAN_MCR_AWUM);
+  }
+  else
+  {
+    CLEAR_BIT(hcan.Instance->MCR, CAN_MCR_AWUM);
+  }
+
+  /* Set the automatic retransmission */
+  if (hcan.Init.AutoRetransmission == ENABLE)
+  {
+    CLEAR_BIT(hcan.Instance->MCR, CAN_MCR_NART);
+  }
+  else
+  {
+    SET_BIT(hcan.Instance->MCR, CAN_MCR_NART);
+  }
+
+  /* Set the receive FIFO locked mode */
+  if (hcan.Init.ReceiveFifoLocked == ENABLE)
+  {
+    SET_BIT(hcan.Instance->MCR, CAN_MCR_RFLM);
+  }
+  else
+  {
+    CLEAR_BIT(hcan.Instance->MCR, CAN_MCR_RFLM);
+  }
+
+  /* Set the transmit FIFO priority */
+  if (hcan.Init.TransmitFifoPriority == ENABLE)
+  {
+    SET_BIT(hcan.Instance->MCR, CAN_MCR_TXFP);
+  }
+  else
+  {
+    CLEAR_BIT(hcan.Instance->MCR, CAN_MCR_TXFP);
+  }
+
+  /* Set the bit timing register */
+  WRITE_REG(hcan.Instance->BTR, (uint32_t)(hcan.Init.Mode           |
+                                            hcan.Init.SyncJumpWidth  |
+                                            hcan.Init.TimeSeg1       |
+                                            hcan.Init.TimeSeg2       |
+                                            (hcan.Init.Prescaler - 1U)));
+
+  /* Initialize the error code */
+  hcan.ErrorCode = HAL_CAN_ERROR_NONE;
+
+  /* Initialize the CAN state */
+  hcan.State = HAL_CAN_STATE_READY;
+//HAL_CAN_START
+  if (hcan.State == HAL_CAN_STATE_READY)
+  {
+    /* Change CAN peripheral state */
+    hcan.State = HAL_CAN_STATE_LISTENING;
+
+    /* Request leave initialisation */
+    CLEAR_BIT(hcan.Instance->MCR, CAN_MCR_INRQ);
+
+    /* Get tick */
+    tickstart = HAL_GetTick();
+
+    /* Wait the acknowledge */
+    while ((hcan.Instance->MSR & CAN_MSR_INAK) != 0U)
+    {
+      /* Check for the Timeout */
+      if ((HAL_GetTick() - tickstart) > 10U)//CAN_TIMEOUT_VALUE=10U
+      {
+        /* Update error code */
+        hcan.ErrorCode |= HAL_CAN_ERROR_TIMEOUT;
+
+        /* Change CAN state */
+        hcan.State = HAL_CAN_STATE_ERROR;
+
+        return HAL_ERROR;
+      }
+    }
+
+    /* Reset the CAN ErrorCode */
+    hcan.ErrorCode = HAL_CAN_ERROR_NONE;
+
+    /* Return function status */
+  }
+  else
+  {
+    /* Update error code */
+    hcan.ErrorCode |= HAL_CAN_ERROR_NOT_READY;
+
+    return HAL_ERROR;
+  }
+//=============================================================
+  printf("can ready!\r\n");
+
+  /* USER CODE END 2 */
+
+  /* Infinite loop */
+  /* USER CODE BEGIN WHILE */
+
+  while (1)
+  {
+    /* USER CODE END WHILE */
+
+    if(key_value == '1')
+    {
+       //HAL_CAN_AddTxMessage(&hcan, &TxHeader1, TxData1, &TxMailbox1);
+           uint32_t transmitmailbox; //mailbox 선언
+          HAL_CAN_StateTypeDef state = hcan.State; //hcan에 state 복사저장
+          uint32_t tsr = READ_REG(hcan.Instance->TSR); //tsr에 TSR레지스터 값을 읽어와라
+
+          // CAN이 초기화되어 사용가능한 상태인가?
+            if ((state == HAL_CAN_STATE_READY) ||
+                (state == HAL_CAN_STATE_LISTENING))
+            {
+              /* Check that all the Tx mailboxes are not full */
+             // TME(Transmit mailbox empty)가 0이 아니면 mailbox는 비어있음
+              if (((tsr & 0x04000000) != 0U) ||
+                 //tsr & CAN_TSR_TME0
+                  ((tsr & 0x08000000) != 0U) ||
+                //tsr & CAN_TSR_TME1
+                  ((tsr &  0x10000000) != 0U))
+                 //tsr & CAN_TSR_TME2
+              {
+                /* Select an empty transmit mailbox */
+                //CAN_TSR_CODE를 Pos(24U)만큼 비트이동하여, mailbox를 0010, 0010, 0011으로 나타냄
+                //transmitmailbox = (tsr & CAN_TSR_CODE) >> CAN_TSR_CODE_Pos;
+                 transmitmailbox = (tsr & 0x03000000) >> 24U; //code bit를 0과1번째에 위치시켜 계산하기 편하게 하고, mailbox 인덱스를 저장
+
+                /* Check transmit mailbox value */
+                if (transmitmailbox > 2U) //mailbox가 3이상 받으면 에러임
+                {
+                  /* Update error code */
+                  hcan.ErrorCode |= HAL_CAN_ERROR_INTERNAL;
+
+                  return HAL_ERROR; //0x01U
+                }
+
+                 //DATA FRAME(Standard identifier)
+                /* Set up the Id*/
+                if (TxHeader1.IDE == CAN_ID_STD)
+                {
+                 //Tx를 21U만큼 비트이동, RTR레지스터와 Or 연산 후, Txmailbox.TIR에 저장/ 21번째 BIT부터 STID필드임
+                  hcan.Instance->sTxMailBox[transmitmailbox].TIR = ((TxHeader1.StdId << 21U) |
+                                                                 //TxHeader1.StdId << CAN_TI0R_STID_Pos
+                                                                     TxHeader1.RTR); //Remote transmission request
+                }
+                else
+                {
+                 //Tx를 3U만큼 비트이동, IDE,RTR레지스터와 Or 연산 후, Txmailbox.TIR에 저장
+                  hcan.Instance->sTxMailBox[transmitmailbox].TIR = ((TxHeader1.ExtId << 3U) | //3번째 BIT부터 EXID필드임
+                                                                 //TxHeader1.ExtId << CAN_TI0R_EXID_Pos
+                                                                     TxHeader1.IDE |
+                                                                     TxHeader1.RTR);
+                }
+
+                /* Set up the DLC(Data length code) */
+                hcan.Instance->sTxMailBox[transmitmailbox].TDTR = (TxHeader1.DLC); //DLC = uint32_t 8
+
+
+                /* Set up the data field (8byte)*/
+                // WRITE_REG(REG, VAL) : (REG) = (VAL)
+                WRITE_REG(hcan.Instance->sTxMailBox[transmitmailbox].TDHR,
+                          ((uint32_t)TxData1[7] << 24U) |  //uint32_t)TxData1[7] << CAN_TDH0R_DATA7_Pos)
+                          ((uint32_t)TxData1[6] << 16U) |  //uint32_t)TxData1[6] << CAN_TDH0R_DATA6_Pos)
+                          ((uint32_t)TxData1[5] << 8U) |  //uint32_t)TxData1[5] << CAN_TDH0R_DATA5_Pos)
+                          ((uint32_t)TxData1[4] << 0U));  //uint32_t)TxData1[4] << CAN_TDH0R_DATA4_Pos)
+                WRITE_REG(hcan.Instance->sTxMailBox[transmitmailbox].TDLR,
+                          ((uint32_t)TxData1[3] << 24U) |  //uint32_t)TxData1[3] << CAN_TDH0R_DATA3_Pos)
+                          ((uint32_t)TxData1[2] << 16U) |  //uint32_t)TxData1[2] << CAN_TDH0R_DATA2_Pos)
+                          ((uint32_t)TxData1[1] << 8U) |  //uint32_t)TxData1[1] << CAN_TDH0R_DATA1_Pos)
+                          ((uint32_t)TxData1[0] << 0U));  //uint32_t)TxData1[0] << CAN_TDH0R_DATA0_Pos)
+
+                /* Request transmission */
+                //SET_BIT(hcan.Instance->sTxMailBox[transmitmailbox].TIR, CAN_TI0R_TXRQ);
+                hcan.Instance->sTxMailBox[transmitmailbox].TIR |= 0x01UL;
+              }
+
+              else
+              {
+                /* Update error code */
+                hcan.ErrorCode |= HAL_CAN_ERROR_PARAM; //Parameter error(0x00200000U)                                      */
+              }
+
+            }
+
+            else
+            {
+              /* Update error code */
+              hcan.ErrorCode |= HAL_CAN_ERROR_NOT_INITIALIZED; //Peripheral not initialized (0x00040000U)
+            }
+
+
+       printf("Can Send 1 message success\r\n");
+       key_value = 0;
+       HAL_Delay(1000);
+
+    }
+
+    else if(key_value == '2')
+    {
+       HAL_CAN_AddTxMessage(&hcan, &TxHeader2, TxData2, &TxMailbox2);
+       printf("Can Send 2 message success\r\n");
+       key_value = 0;
+       HAL_Delay(1000);
+
+    }
+
+    else if(key_value == '3')
+    {
+       HAL_CAN_AddTxMessage(&hcan, &TxHeader3, TxData3, &TxMailbox3);
+       printf("Can Send 3 message success\r\n");
+       key_value = 0;
+       HAL_Delay(1000);
+    }
+
+
+
+    /* USER CODE BEGIN 3 */
+  }
+  /* USER CODE END 3 */
+}
+
+/**
+  * @brief System Clock Configuration
+  * @retval None
+  */
+void SystemClock_Config(void)
+{
+  RCC_OscInitTypeDef RCC_OscInitStruct = {0};
+  RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
+
+  /** Initializes the RCC Oscillators according to the specified parameters
+  * in the RCC_OscInitTypeDef structure.
+  */
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
+  RCC_OscInitStruct.HSEState = RCC_HSE_BYPASS;
+  RCC_OscInitStruct.HSEPredivValue = RCC_HSE_PREDIV_DIV1;
+  RCC_OscInitStruct.HSIState = RCC_HSI_ON;
+  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
+  RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
+  RCC_OscInitStruct.PLL.PLLMUL = RCC_PLL_MUL8;
+  if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** Initializes the CPU, AHB and APB buses clocks
+  */
+  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
+                              |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
+  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
+  RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
+  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
+  RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
+
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+}
+
+/**
+  * @brief CAN Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_CAN_Init(void)
+{
+
+  /* USER CODE BEGIN CAN_Init 0 */
+
+  /* USER CODE END CAN_Init 0 */
+
+  /* USER CODE BEGIN CAN_Init 1 */
+
+  /* USER CODE END CAN_Init 1 */
+  hcan.Instance = CAN1;
+  hcan.Init.Prescaler = 4;
+  hcan.Init.Mode = CAN_MODE_NORMAL;
+  hcan.Init.SyncJumpWidth = CAN_SJW_1TQ;
+  hcan.Init.TimeSeg1 = CAN_BS1_13TQ;
+  hcan.Init.TimeSeg2 = CAN_BS2_2TQ;
+  hcan.Init.TimeTriggeredMode = DISABLE;
+  hcan.Init.AutoBusOff = DISABLE;
+  hcan.Init.AutoWakeUp = DISABLE;
+  hcan.Init.AutoRetransmission = DISABLE;
+  hcan.Init.ReceiveFifoLocked = DISABLE;
+  hcan.Init.TransmitFifoPriority = DISABLE;
+  if (HAL_CAN_Init(&hcan) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN CAN_Init 2 */
+
+  /* USER CODE END CAN_Init 2 */
+
+}
+
+/**
+  * @brief USART2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_USART2_UART_Init(void)
+{
+
+  /* USER CODE BEGIN USART2_Init 0 */
+
+  /* USER CODE END USART2_Init 0 */
+
+  /* USER CODE BEGIN USART2_Init 1 */
+
+  /* USER CODE END USART2_Init 1 */
+  huart2.Instance = USART2;
+  huart2.Init.BaudRate = 115200;
+  huart2.Init.WordLength = UART_WORDLENGTH_8B;
+  huart2.Init.StopBits = UART_STOPBITS_1;
+  huart2.Init.Parity = UART_PARITY_NONE;
+  huart2.Init.Mode = UART_MODE_TX_RX;
+  huart2.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart2.Init.OverSampling = UART_OVERSAMPLING_16;
+  if (HAL_UART_Init(&huart2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN USART2_Init 2 */
+
+  /* USER CODE END USART2_Init 2 */
+
+}
+
+/**
+  * @brief GPIO Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_GPIO_Init(void)
+{
+  GPIO_InitTypeDef GPIO_InitStruct = {0};
+
+  /* GPIO Ports Clock Enable */
+  __HAL_RCC_GPIOC_CLK_ENABLE();
+  __HAL_RCC_GPIOD_CLK_ENABLE();
+  __HAL_RCC_GPIOA_CLK_ENABLE();
+  __HAL_RCC_GPIOB_CLK_ENABLE();
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin : B1_Pin */
+  GPIO_InitStruct.Pin = B1_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(B1_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : LD2_Pin */
+  GPIO_InitStruct.Pin = LD2_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(LD2_GPIO_Port, &GPIO_InitStruct);
+
+  /* EXTI interrupt init*/
+  HAL_NVIC_SetPriority(EXTI15_10_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
+
+}
+
+/* USER CODE BEGIN 4 */
+
+/* USER CODE END 4 */
+
+/**
+  * @brief  This function is executed in case of error occurrence.
+  * @retval None
+  */
+void Error_Handler(void)
+{
+  /* USER CODE BEGIN Error_Handler_Debug */
+  /* User can add his own implementation to report the HAL error return state */
+  __disable_irq();
+  while (1)
+  {
+  }
+  /* USER CODE END Error_Handler_Debug */
+}
+
+#ifdef  USE_FULL_ASSERT
+/**
+  * @brief  Reports the name of the source file and the source line number
+  *         where the assert_param error has occurred.
+  * @param  file: pointer to the source file name
+  * @param  line: assert_param error line source number
+  * @retval None
+  */
+void assert_failed(uint8_t *file, uint32_t line)
+{
+  /* USER CODE BEGIN 6 */
+  /* User can add his own implementation to report the file name and line number,
+     ex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
+  /* USER CODE END 6 */
+}
+#endif /* USE_FULL_ASSERT */
